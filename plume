@@ -2,7 +2,7 @@
 #auth: jkl
 # writing system
 
-# for debugging
+# uncomment for shell debugging
 #set -x
 
 # dates
@@ -10,39 +10,32 @@ today=$(date +%F)
 # eg "2016-03-21" or %Y-%m-%d, used as create and edit timestamps
 humandate=$(date '+%d %b %Y')
 
-# identify the script name 
+# self-identify the script name (it can safely be changed)
 scriptname=${0##*/}
 
 # main subdir in which all content is stored
 filestore=base
-if [ ! -e "$filestore" ]
-then
-	mkdir "$filestore"
-fi
 
 # index file
 indexfile=$filestore/.index
 
 # global logfile
 logfile=$scriptname.log
-if [ ! -e "$logfile" ]
-then
-	touch "$logfile"
-fi
 
 # support files
 vimrc=support/vimrc
+vimhints=support/vimhints.txt
 
 # name of printer (from lpstat -p)
 printer="HL-2270DW"
 
-# maximum number of projects
+# maximum number of projects (an arbitrary limit)
 MAXPROJECTS=100
-
 
 function usage
 {
 	echo "usage: $scriptname"
+	echo "$scriptname init (run once before use to set up environment)"
 	echo "$scriptname create 'name' (to start a project)"
 	echo "$scriptname list (to list all projects)"
 	echo "$scriptname edit [index or name] (to edit a project)"
@@ -86,6 +79,25 @@ function logevent
 	# logs event to global logfile
 	echo "[$(timestamp)] $scriptname $@" >> $logfile
 }
+
+init () {
+	# initialize a new environment
+	if [ -e "$filestore" ]
+	then
+		echo "ERROR: $filestore exists"
+		exit 1
+	else
+		mkdir "$filestore"
+		touch "$indexfile"
+	fi
+	if [ -e "$logfile" ]
+	then
+		mv "$logfile" "$logfile.old"
+	else
+		touch "$logfile"
+	fi
+}
+
 
 function checkindex
 {
@@ -170,18 +182,17 @@ function create
 	touch "$projectdir/sources"
 	touch "$projectdir/keywords"
 	touch "$projectdir/title"
-	printf "name=$name\n" >> "$controlfile"
-	printf "created=$(date "+%s")\n" >> "$controlfile"
-	if [ ! -e $indexfile ]
+	if [ ! -s "$indexfile" ]
 	then
-		touch $indexfile
 		index=1
 	else
-		lastindex=$(tail -1 $indexfile | cut -d: -f1)
+		lastindex=$(tail -1 "$indexfile" | cut -d: -f1)
 		index=$(($lastindex+1))
 	fi
-	printf "index=$index\n" >> "$controlfile"
 	printf "$index:$name\n" >> $indexfile
+	putvalue $index name $name
+	putvalue $index created $(date "+%s")
+	putvalue $index index $index
 	logevent "'$FUNCNAME $@': success: '$project' created"
 }
 
@@ -608,6 +619,9 @@ else
 				;;
 			list)
 				list
+				;;
+			init)
+				init
 				;;
 			help)
 				usage
