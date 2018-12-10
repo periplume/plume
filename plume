@@ -1,0 +1,625 @@
+#!/bin/bash
+#auth: jkl
+# writing system
+
+# for debugging
+#set -x
+
+# dates
+today=$(date +%F)
+# eg "2016-03-21" or %Y-%m-%d, used as create and edit timestamps
+humandate=$(date '+%d %b %Y')
+
+# identify the script name 
+scriptname=${0##*/}
+
+# main subdir in which all content is stored
+filestore=base
+if [ ! -e "$filestore" ]
+then
+	mkdir "$filestore"
+fi
+
+# index file
+indexfile=$filestore/.index
+
+# global logfile
+logfile=$scriptname.log
+if [ ! -e "$logfile" ]
+then
+	touch "$logfile"
+fi
+
+# support files
+vimrc=support/vimrc
+
+# name of printer (from lpstat -p)
+printer="HL-2270DW"
+
+# maximum number of projects
+MAXPROJECTS=100
+
+
+function usage
+{
+	echo "usage: $scriptname"
+	echo "$scriptname create 'name' (to start a project)"
+	echo "$scriptname list (to list all projects)"
+	echo "$scriptname edit [index or name] (to edit a project)"
+	echo "$scriptname rename [index] <new name> (to rename a project)"
+	# todo
+	# edit-notes
+	# edit-outline
+	# edit-abstract
+	# edit-references
+	# edit-keywords
+	# edit-title
+	# reorder (promote index up by count, down by count, to top, to bottom) COMPLEX!
+	# delete (reindex and archive)
+	exit
+}
+
+# other todo
+# change getvalue to allow index instead of project name
+# add function changevalue for controlfile changes
+# add log function
+#  consider removing each project .log and making one single log file
+#  then logging the projectname and the message
+# customize vim with .vimrc
+# open with split window (outline top right, notes bottom right)
+# add vim commands to open notes, outline, summary, etc
+# vim statusbar change...add file path after base? lots of room
+# how to open/edit eg notes while editing draft? since the backup is now global
+# and the assumption is that draft is the main file i edit and the others are
+# complementary
+# add "in use" lock to prevent rename, etc pulling the carpet out from under
+
+function timestamp
+{
+	# no args, return current timestamp string
+	date '+%F %T %s'
+}
+
+function logevent
+{
+	# $@: one arg (multi word) the log message
+	# logs event to global logfile
+	echo "[$(timestamp)] $scriptname $@" >> $logfile
+}
+
+function checkindex
+{
+	# check for name and index consistency
+	# no args
+	# return 0 if consistent, 1 if inconsistent
+	indexstate=0
+	for i in $filestore/*
+	do
+		name=${i##*/}
+		controlfilename=$(grep ^name= "$i/.control" 2>/dev/null | cut -d= -f2)
+		controlfileindex=$(grep ^index= "$i/.control" 2>/dev/null | cut -d= -f2)
+		indexname=$(grep ^$controlfileindex: $indexfile | cut -d: -f2)
+		if [[ "$name" != "$controlfilename" ]] || [[ "$name" != "$indexname" ]]
+		then
+			indexstate=1
+		fi
+	done
+	# now check indexfile against base/*
+	while read -r line
+	do
+		index=${line%\:*}
+		name=${line##*\:}
+		controlfile=$filestore/$name/.control
+		controlfilename=$(grep ^name= "$controlfile" 2>/dev/null | cut -d= -f2)
+		controlfileindex=$(grep ^index= "$controlfile" 2>/dev/null | cut -d= -f2)
+		if [[ "$name" != "$controlfilename" ]] || [[ "$index" != "$controlfileindex" ]]
+		then
+			indexstate=1
+		fi
+	done < "$indexfile"
+	if [[ $indexstate != 0 ]]
+	then
+		return $indexstate
+	else
+		return $indexstate
+	fi
+}
+
+function rebuildindex
+{
+	# rebuild corrupt index
+	newindexfile=$filestore/.index.new
+	touch "$filestore/.index.new"
+	indexmax=$(find "$filestore"/* -maxdepth 0 -type d -print | wc -l)
+	i=1
+	while (( $i <= $indexmax )) 
+	do
+		echo "$i:" >> "$newindexfile"
+		(( i+=1 ))
+	done
+	for i in $filestore/*
+	do
+		name=${i##*/}
+		controlfilename=$(grep ^name= "$i/.control" 2>/dev/null | cut -d= -f2)
+		controlfileindex=$(grep ^index= "$i/.control" 2>/dev/null | cut -d= -f2)
+		sed -i "s/^$controlfileindex:.*/$controlfileindex:$name/" "$newindexfile"
+	done
+	mv "$newindexfile" "$indexfile"
+
+}
+
+function create
+{
+	# creates a new project
+	# $@ (one arg, one or more words) is project name
+	project=$@
+	projectdir=$filestore/$project
+	if [ -e "$projectdir" ]
+	then
+		printf "ERROR: $project exists\n"
+		logevent "'$FUNCNAME $@': failed: '$project' exists"
+		exit 1
+	fi
+	mkdir "$projectdir"
+	controlfile="$projectdir/.control"
+	touch "$controlfile"
+	touch "$projectdir/draft"
+	touch "$projectdir/outline"
+	touch "$projectdir/notes"
+	touch "$projectdir/summary"
+	touch "$projectdir/sources"
+	touch "$projectdir/keywords"
+	touch "$projectdir/title"
+	printf "name=$name\n" >> "$controlfile"
+	printf "created=$(date "+%s")\n" >> "$controlfile"
+	if [ ! -e $indexfile ]
+	then
+		touch $indexfile
+		index=1
+	else
+		lastindex=$(tail -1 $indexfile | cut -d: -f1)
+		index=$(($lastindex+1))
+	fi
+	printf "index=$index\n" >> "$controlfile"
+	printf "$index:$name\n" >> $indexfile
+	logevent "'$FUNCNAME $@': success: '$project' created"
+}
+
+function rename
+{
+	# rename a project
+	# arg 1 = index of project to rename
+	# arg 2 = new name
+	index=$1
+	old=$(grep ^$index: "$indexfile" | cut -d: -f2)
+	new=${@:2}
+	olddir=$filestore/$old
+	newdir=$filestore/$new
+	if [[ "$old" = "$new" ]]
+	then
+		echo "ERROR: cannot remane '$old' to '$new'"
+		logevent "'$FUNCNAME $@': failed: '$new' cannot be same as '$old'"
+		exit 1
+	fi
+	if [ -e "$olddir/.lock" ]
+	then
+		echo "ERROR: $old in use (locked)"
+		logevent "'$FUNCNAME $@': failed: '$old' is locked" 
+		exit 1
+	fi
+	echo "renaming '$old' to '$new'"
+	mv "$olddir" "$newdir"
+	projectdir=$filestore/$new
+	controlfile=$projectdir/.control
+	sed -i "s/^name=.*/name=$new/" "$controlfile"
+	sed -i "s/^$index:.*/$index:$new/" "$indexfile"
+	logevent "'$FUNCNAME $@': success: renamed '$old' to '$new'"
+	echo "'$old' renamed to '$new'"
+	exit
+}
+
+function list
+{
+	# print pretty report on status of projects
+	# note: assumes wc is less than 100000 and elapsed time less than 1000 hours each
+	# still many fields to incorporate, eg, outline? # proofs, published? (eg to wordpress)
+	check=$(checkindex)
+	if [[ $? != 0 ]]
+	then
+		echo "ERROR: indexfile is corrupt, run '$scriptname fixindex' to repair"
+		exit 1
+	fi
+	printf "=====================================================================================\n"
+	printf "index  name                               ver   wc       time   outline  proofs   pub\n"
+	printf "=====================================================================================\n"
+	while read i
+	do
+		index=${i%\:*}
+		name=${i##*\:}
+		version=$(getvalue $index version)
+		elapsed=$(convertseconds $(getvalue $index elapsedtime))
+		wc=$(getvalue $index wordcount)
+		(( ${#name} > 35 )) && name="${name:0:31}..."
+		printf "%-6s %-34s %-5s %-6s %6s\n" $index "$name" $version $wc $elapsed
+	done < $indexfile
+	printf "=====================================================================================\n"
+}
+
+function convertseconds
+{
+# take seconds as $1, return formatted time as hour:minute
+  ((h=${1}/3600))
+  ((m=(${1}%3600)/60))
+  ((s=${1}%60))
+  printf "%01d:%02d\n" $h $m
+}
+
+function edit
+{
+	# open draft file of project by index number
+	# $1 index
+	projectindex=$1
+	projectname=$(getprojectname $projectindex)
+	projectdir=$filestore/$projectname
+	draftfile=$projectdir/draft
+	notesfile=$projectdir/notes
+	titlefile=$projectdir/title
+	outlinefile=$projectdir/outline
+	controlfile=$projectdir/.control
+	if [ -e "$projectdir/.lock" ]
+	then
+		echo "ERROR: '$projectname' in use (locked)"
+		exit 1
+	fi
+	starttime=$(date '+%s')
+	# do backups before editing
+	currentversion=$(backup $projectname)
+	touch "$projectdir/.lock"
+	#vim -O "$draftfile" "$notesfile" -u $vimrc \
+	# 	-c "wincmd l | setl stl=notes | vertical-resize 100 | setl foldcolumn=0 | wincmd h"
+	vim -u $vimrc $draftfile \
+  	-c "vertical resize 95 | setl winfixwidth | setl foldcolumn=3" \
+  	-c "vsplit $notesfile" \
+  	-c "vertical resize 60 | setl winfixwidth | setl stl=%=%t..." \
+  	-c "vsplit $titlefile" \
+  	-c "vertical resize 50 | setl stl=%=%t" \
+  	-c "split $outlinefile" \
+  	-c "setl stl=%=%t | resize 50 | wincmd h | wincmd h"
+	sessiontime=$(($(date '+%s') - $starttime))
+	priorelapsedtime=$(getvalue $projectindex elapsedtime)
+	elapsedtime=$(($priorelapsedtime + $sessiontime))
+	putvalue $projectindex elapsedtime $elapsedtime
+	# set current version in control
+	putvalue $projectindex version $currentversion
+	#if [ $currentversion == 1 ]
+	#then
+	#	printf "version=$currentversion\n" >> "$controlfile"
+	#else
+	#	sed -i "s/^version=.*/version=$currentversion/" "$controlfile"
+	#fi
+	# update word count in draftfile
+	words=$(wc -w "$draftfile" | cut -d' ' -f1)
+	putvalue $projectindex wordcount $words
+	rm "$projectdir/.lock"
+	exit
+}	
+
+function getindex
+{
+	# get the index from the project name
+	# $@ project name
+	# returns index number
+	# exit 1 if no such index
+	projectname=$@
+	indexfile=$filestore/.index
+	index=$(grep "$projectname$" "$indexfile" | cut -d: -f1)
+	if [[ -z $index ]]
+	then
+		exit 1
+	else
+		echo "$index"
+	fi
+}
+
+function putvalue
+{
+	# change (or add) value to controlfile
+	# $1 index of project
+	# $2 key
+	# $3 value (allow multi word value)
+	projectindex=$1
+	key=$2
+	value=${@:3}
+	project=$(getprojectname $projectindex)
+	if [ $? = 1 ]
+	then
+		echo "ERROR: $projectindex does not exist"
+		exit 1
+	fi
+	projectdir=$filestore/$project
+	controlfile=$projectdir/.control
+	if grep -q "^$key=" "$controlfile"
+	then
+		sed -i "s/^$key=.*/$key=$value/" "$controlfile"
+	else
+		printf "$key=$value\n" >> "$controlfile"
+	fi
+}
+
+getvalue () {
+	# get value in controlfile
+	# $1 index of project
+	# $2 key
+	# echo key value if found (exit 0)
+	# echo 0 if not found
+	# LIMITATION HERE: no key translates to keyvalue=0 (and vice versa)
+	projectindex=$1
+	key=$2
+	project=$(getprojectname $projectindex)
+	if [ $? = 1 ]
+	then
+		echo "ERROR: $projectindex does not exist"
+		exit 1
+	fi
+	projectdir=$filestore/$project
+	controlfile=$projectdir/.control
+	value=$(grep ^$key= "$controlfile" | cut -d= -f2)
+	if [[ -z $value ]]
+	then
+		echo 0
+	else
+		echo $value
+	fi
+}
+	
+
+function getprojectname
+{
+	# get the project name from index
+	# $1 index
+	# return string project
+	# exit 1 for no such index
+	index=$1
+	indexfile=$filestore/.index
+	# check index consistency
+	#check=$(checkindex)
+	#if [[ $? != 0 ]]
+	#then
+	#	echo "ERROR: indexfile is corrupt, run '$scriptname fixindex' to repair"
+	#	exit 1
+	#fi
+	projectname=$(grep "^$index:" "$indexfile" | cut -d: -f2)
+	if [[ -z $projectname ]]
+	then
+		return 1	
+	else
+		echo "$projectname"
+	fi
+}
+
+
+function backup
+{
+	# backup specified project (before all edits)
+	# $@ project name
+	# returns current version
+	project=$@
+	projectdir=$filestore/$project
+	backupdir=$projectdir/.backups
+	controlfile=$projectdir/.control
+	if [ -d "$backupdir" ]
+	then
+		if [ -d "$backupdir"/1 ]
+		then
+			lastbackup=$(ls "$backupdir" | sort -g | tail -1)
+			lastversion=$(($lastbackup+1))
+			newversion=$(($lastversion+1))
+		else
+			lastversion=1
+			newversion=2
+		fi
+		backupdest="$backupdir"/$lastversion
+		mkdir "$backupdest"
+		for i in $(ls "$projectdir")
+		do
+			cp "$projectdir/$i" "$backupdest" 
+		done
+	else
+		newversion=1
+		mkdir "$backupdir"
+	fi
+	echo $newversion
+}
+
+function validatename
+{
+	# test for legal project name to maintain project naming convention 
+	# allow a-z 0-9 ' '
+	# $@ = project name
+	# return 0 is legal, 1 if illegal
+	if [[ "$@" =~ ^[a-z0-9' ']+$ ]]
+	then
+		return 0
+	else
+		return 1 
+	fi
+}
+
+projectexists ()
+{
+	# check whether project exists
+	# $@ project name
+	# test if project exists
+	# return 0 if true
+	# return 1 if false (no project of that name exists)
+	testproject=$@
+	testprojectdir=$filestore/$testproject
+	if [ -e "$testprojectdir" ]
+	then
+		return 0
+	else
+		return 1
+	fi
+}
+
+# read the command options
+if [ $# -eq 0 ];
+then
+	usage
+else
+	while [ $# -gt 0 ]
+	do
+		case "$1" in
+			create)
+				if [ -z $2 ]
+				then
+					echo "ERROR: specify the project name"
+					usage
+				else
+					name=${@:2}
+					validatename $name
+					if [[ $? -eq 0 ]]
+					then
+						projectexists $name
+						if [[ $? -eq 1 ]]
+						then
+							create $name
+							break
+						else
+							echo "ERROR: '$name' already exists"
+							exit 1
+						fi
+					else
+						echo "ERROR: '$name' is illegal; allowed characters are a-z and 0-9"
+						exit 1
+					fi
+				fi
+				;;
+			edit)
+				if [ -z $2 ]
+				then
+					echo "ERROR: specify the project index or project name to edit"
+					exit 1
+				fi
+				if [[ "$#" -eq 2 ]] && [[ "$2" =~ ^[0-9]*$ ]]
+				then
+					# edit by index number, check for valid index number
+					if [[ $2 =~ ^[1-9][0-9]*$ ]] && [[ $2 -le $MAXPROJECTS ]]
+					then
+						inputindex=$2
+					else
+						echo "ERROR: $2 not legal index number (1-100)"
+						exit 1
+					fi
+				else
+					# edit by project name
+					inputname=${@:2}
+					# check if name is legal
+					validatename $inputname
+					if [[ $? -eq 0 ]]
+					then
+						# check if project already exists
+						projectexists $inputname
+						if [[ $? -eq 0 ]]
+						then
+							# get the project index number
+							inputindex=$(getindex $inputname)
+							if [[ -z $inputindex ]]
+							then
+								echo "ERROR: cannot get index for $inputname; index may be corrupt"
+								exit 1
+							fi
+						else
+							echo "ERROR: '$inputname' does not exist"
+							exit 1
+						fi
+					else
+						echo "ERROR: '$inputname' is not legal"
+						exit 1
+					fi
+				fi
+				edit $inputindex
+				break
+				;;
+			getvalue)
+				if [ -z $2 ]
+				then
+					echo "ERROR: key 'project'"
+					break
+				else
+					key=$2
+					project=${@:3}
+					getvalue $key $project
+					break
+				fi
+				;;
+			backup)
+				if [ -z $2 ]
+				then
+					echo "ERROR: $scriptname backup <project>"
+					usage
+				else
+					project=${@:2}
+					echo "case project=$project"
+					backup2 $project
+					exit
+				fi
+				;;
+			rename)
+				if [ -z $2 ]
+				then
+					echo "ERROR: $scriptname rename <index> 'new name'"
+					usage
+				else
+					old=$2
+					new=${@:3}
+					rename $old $new
+				fi
+				;;
+			checkindex)
+				checkindex
+				;;
+			rebuildindex)
+				rebuildindex
+				;;
+			fixindex)
+				if [ -z $2 ]
+				then
+					check=$(checkindex)
+					if [[ $? != 0 ]]
+					then
+						rebuildindex
+						echo "index rebuilt"
+					else
+						echo "index is already consistent"
+					fi
+				fi
+				;;
+			getprojectname)
+				getprojectname $2
+				break
+				;;
+			getindex)
+				getindex ${@:2}
+				break
+				;;
+			putvalue)
+				putvalue $2 $3 $4
+				;;
+			list)
+				list
+				;;
+			help)
+				usage
+				;;
+			list)
+				list
+				;;
+			*)
+				usage
+				;;
+		esac
+		shift
+	done
+fi
+

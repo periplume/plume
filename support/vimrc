@@ -1,0 +1,114 @@
+" vimrc file for periplume
+" author: jkl
+
+" not clear what this is doing but without it vim behaves erratically
+runtime! debian.vim
+
+" turn on color syntax highlighting
+syntax on
+" set the desired color scheme
+colorscheme desert
+" set number of colors to 256
+set t_Co=256
+
+" change cursor color by mode
+if &term =~ "xterm\\|rxvt"
+  " use an red cursor in insert mode
+  let &t_SI = "\<Esc>]12;red\x7"
+  " use a yellow cursor otherwise
+  let &t_EI = "\<Esc>]12;green\x7"
+  silent !echo -ne "\033]12;green\007"
+  " reset cursor when vim exits
+  autocmd VimLeave * silent !echo -ne "\033]112\007"
+  " use \003]12;gray\007 for gnome-terminal
+endif
+
+" non-default behavior for window splitting
+set splitright
+set splitbelow
+" don't resize windows after a window close (for VIMHINTS)
+set noequalalways
+
+" statusline
+set laststatus=2
+" print file name only without path
+"set statusline=%-100t
+"set statusline=%-30t
+set statusline=%-30f
+" display date in (approx) middle of status bar in format DD-Month-YYYY
+"set statusline+=\(%-{strftime(\"%d-%b-%Y\",getftime(expand(\"%:p\")))}\)
+set statusline+=%20{strftime('%d\ %b\ %Y')}
+" the above is wrong and displays the date of the last edit to the file
+" currently open...this needs to be fixed.
+" left/right separator
+set statusline+=%=
+" print current line and total lines
+set statusline+=Line:\ %-4l/%-4L
+" print word count from function below
+set statusline+=\ wc:%-6{WordCount()}
+" display timer derived from timer function below
+set statusline+=%{TimeSpentEditing()}
+
+
+" automatic backups
+set backup
+set backupdir=~/.vim/backups
+set writebackup
+set backupcopy=yes
+au BufWritePre * let &bex = '@' . strftime("%F.%H:%M")
+" consider making this work in the working directory of journal, for example
+
+
+" general editing mode for periplume
+set linebreak 
+set textwidth=80 
+set formatoptions=atnw
+set wrap
+"set foldcolumn=4
+set autoindent
+set tabstop=5
+
+
+" a function that tracks the word count (for the status bar)
+function! WordCount()
+  let s:old_status = v:statusmsg
+  let position = getpos(".")
+  exe ":silent normal g\<c-g>"
+  let stat = v:statusmsg
+  let s:word_count = 0
+  if stat != '--No lines in buffer--'
+    let s:word_count = str2nr(split(v:statusmsg)[11])
+    let v:statusmsg = s:old_status
+  end
+  call setpos('.', position)
+  return s:word_count 
+endfunction
+
+
+" timer for statusbar (time elapsed since file opened)
+augroup TimeSpentEditing
+	au!
+	au BufWinEnter * if !exists('b:tstart')|let b:tstart=reltime()|en
+augroup END
+
+func! TimeSpentEditing()
+	let secs=str2nr(reltimestr(reltime(b:tstart)))
+	let hours=secs/3600
+	let minutes=(secs-hours*3600)/60
+	let seconds=secs-hours*3600-minutes*60
+	"return printf("%d:%02d",hours,minutes)
+	return printf("%d:%02d:%02d",hours,minutes,seconds)
+endfunc
+
+" function to open my vimhints file
+func! VimHints()
+	wincmd l
+	wincmd l
+	wincmd j
+	below :30split support/vimhints.txt
+	setlocal foldcolumn=0
+	setlocal statusline=%=\ vim\ hints
+	"wincmd h  " return focus back to left window
+endfu
+com! VIMHINTS call VimHints()
+
