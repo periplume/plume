@@ -1,14 +1,8 @@
 #!/bin/bash
-#auth: jkl
+# author: jkl
 # writing system
-
 # uncomment for shell debugging
 #set -x
-
-# dates
-today=$(date +%F)
-# eg "2016-03-21" or %Y-%m-%d, used as create and edit timestamps
-humandate=$(date '+%d %b %Y')
 
 # self-identify the script name (it can safely be changed)
 scriptname=${0##*/}
@@ -40,36 +34,26 @@ function usage
 	echo "$scriptname list (to list all projects)"
 	echo "$scriptname edit [index or name] (to edit a project)"
 	echo "$scriptname rename [index] <new name> (to rename a project)"
+	echo "$scriptname fixindex (checks index consistency, rebuilds if corrupt)"
 	# todo
-	# edit-notes
-	# edit-outline
-	# edit-abstract
-	# edit-references
-	# edit-keywords
-	# edit-title
 	# reorder (promote index up by count, down by count, to top, to bottom) COMPLEX!
 	# delete (reindex and archive)
+	# proof (to print a proof copy)
+	# publish (to some designated location)
+	# git-status (check against master branch)
 	exit
 }
 
 # other todo
-# change getvalue to allow index instead of project name
-# add function changevalue for controlfile changes
-# add log function
-#  consider removing each project .log and making one single log file
-#  then logging the projectname and the message
-# customize vim with .vimrc
-# open with split window (outline top right, notes bottom right)
-# add vim commands to open notes, outline, summary, etc
-# vim statusbar change...add file path after base? lots of room
-# how to open/edit eg notes while editing draft? since the backup is now global
-# and the assumption is that draft is the main file i edit and the others are
-# complementary
-# add "in use" lock to prevent rename, etc pulling the carpet out from under
+# - add vim commands to open notes, outline, summary, etc
+# - vim statusbar problem: spaces in path breaks vim path
+# - add logging where prudent
+# - change function defs to be consistent
 
 function timestamp
 {
 	# no args, return current timestamp string
+	# 'YYYY-MM-DD HH:MM:SS SECONDS-SINCE-1970'
 	date '+%F %T %s'
 }
 
@@ -116,7 +100,7 @@ function checkindex
 			indexstate=1
 		fi
 	done
-	# now check indexfile against base/*
+	# now check (cross-reference) indexfile against base/*
 	while read -r line
 	do
 		index=${line%\:*}
@@ -168,7 +152,7 @@ function create
 	projectdir=$filestore/$project
 	if [ -e "$projectdir" ]
 	then
-		printf "ERROR: $project exists\n"
+		printf "ERROR: $project exists, run init first\n"
 		logevent "'$FUNCNAME $@': failed: '$project' exists"
 		exit 1
 	fi
@@ -288,7 +272,7 @@ function edit
 	touch "$projectdir/.lock"
 	#vim -O "$draftfile" "$notesfile" -u $vimrc \
 	# 	-c "wincmd l | setl stl=notes | vertical-resize 100 | setl foldcolumn=0 | wincmd h"
-	vim -u $vimrc $draftfile \
+	vim -u $vimrc "$draftfile" \
   	-c "vertical resize 95 | setl winfixwidth | setl foldcolumn=3" \
   	-c "vsplit $notesfile" \
   	-c "vertical resize 60 | setl winfixwidth | setl stl=%=%t..." \
@@ -552,18 +536,6 @@ else
 				edit $inputindex
 				break
 				;;
-			getvalue)
-				if [ -z $2 ]
-				then
-					echo "ERROR: key 'project'"
-					break
-				else
-					key=$2
-					project=${@:3}
-					getvalue $key $project
-					break
-				fi
-				;;
 			backup)
 				if [ -z $2 ]
 				then
@@ -587,12 +559,6 @@ else
 					rename $old $new
 				fi
 				;;
-			checkindex)
-				checkindex
-				;;
-			rebuildindex)
-				rebuildindex
-				;;
 			fixindex)
 				if [ -z $2 ]
 				then
@@ -606,17 +572,6 @@ else
 					fi
 				fi
 				;;
-			getprojectname)
-				getprojectname $2
-				break
-				;;
-			getindex)
-				getindex ${@:2}
-				break
-				;;
-			putvalue)
-				putvalue $2 $3 $4
-				;;
 			list)
 				list
 				;;
@@ -625,9 +580,6 @@ else
 				;;
 			help)
 				usage
-				;;
-			list)
-				list
 				;;
 			*)
 				usage

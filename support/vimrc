@@ -31,9 +31,7 @@ set noequalalways
 
 " statusline
 set laststatus=2
-" print file name only without path
-"set statusline=%-100t
-"set statusline=%-30t
+" print path relative to working directory
 set statusline=%-30f
 " display date in (approx) middle of status bar in format DD-Month-YYYY
 "set statusline+=\(%-{strftime(\"%d-%b-%Y\",getftime(expand(\"%:p\")))}\)
