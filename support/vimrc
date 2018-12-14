@@ -31,13 +31,10 @@ set noequalalways
 
 " statusline
 set laststatus=2
-" print path relative to working directory
-set statusline=%-30f
-" display date in (approx) middle of status bar in format DD-Month-YYYY
-"set statusline+=\(%-{strftime(\"%d-%b-%Y\",getftime(expand(\"%:p\")))}\)
+" print (tail of) current working directory (project name)
+set statusline=%-30{split(getcwd(),'/')[-1]}
+" display date DD-Month-YYYY
 set statusline+=%20{strftime('%d\ %b\ %Y')}
-" the above is wrong and displays the date of the last edit to the file
-" currently open...this needs to be fixed.
 " left/right separator
 set statusline+=%=
 " print current line and total lines
@@ -47,7 +44,6 @@ set statusline+=\ wc:%-6{WordCount()}
 " display timer derived from timer function below
 set statusline+=%{TimeSpentEditing()}
 
-
 " automatic backups
 set backup
 set backupdir=~/.vim/backups
@@ -55,7 +51,6 @@ set writebackup
 set backupcopy=yes
 au BufWritePre * let &bex = '@' . strftime("%F.%H:%M")
 " consider making this work in the working directory of journal, for example
-
 
 " general editing mode for periplume
 set linebreak 
@@ -65,7 +60,6 @@ set wrap
 "set foldcolumn=4
 set autoindent
 set tabstop=5
-
 
 " a function that tracks the word count (for the status bar)
 function! WordCount()
@@ -81,7 +75,6 @@ function! WordCount()
   call setpos('.', position)
   return s:word_count 
 endfunction
-
 
 " timer for statusbar (time elapsed since file opened)
 augroup TimeSpentEditing

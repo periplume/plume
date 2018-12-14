@@ -46,7 +46,6 @@ function usage
 
 # other todo
 # - add vim commands to open notes, outline, summary, etc
-# - vim statusbar problem: spaces in path breaks vim path
 # - add logging where prudent
 # - change function defs to be consistent
 
@@ -79,6 +78,7 @@ init () {
 		mv "$logfile" "$logfile.old"
 	else
 		touch "$logfile"
+		logevent  "'$FUNCNAME $@': success: new environment created"
 	fi
 }
 
@@ -98,6 +98,7 @@ function checkindex
 		if [[ "$name" != "$controlfilename" ]] || [[ "$name" != "$indexname" ]]
 		then
 			indexstate=1
+			logevent "'$FUNCNAME $@': failed: directory '$name' not found in index or controlfile"
 		fi
 	done
 	# now check (cross-reference) indexfile against base/*
@@ -111,12 +112,15 @@ function checkindex
 		if [[ "$name" != "$controlfilename" ]] || [[ "$index" != "$controlfileindex" ]]
 		then
 			indexstate=1
+			logevent "'$FUNCNAME $@': failed: '$name' in index not found in $filestore"
 		fi
 	done < "$indexfile"
 	if [[ $indexstate != 0 ]]
 	then
+		logevent "'$FUNCNAME $@': failure: index file is not consistent"
 		return $indexstate
 	else
+		logevent "'$FUNCNAME $@': success: index file is consistent"
 		return $indexstate
 	fi
 }
@@ -141,6 +145,7 @@ function rebuildindex
 		sed -i "s/^$controlfileindex:.*/$controlfileindex:$name/" "$newindexfile"
 	done
 	mv "$newindexfile" "$indexfile"
+	logevent "'$FUNCNAME $@': success: new index file rebuilt from $filestore"
 
 }
 
@@ -264,12 +269,14 @@ function edit
 	if [ -e "$projectdir/.lock" ]
 	then
 		echo "ERROR: '$projectname' in use (locked)"
+		logevent "'$FUNCNAME $@': failed: lock file detected in $projectname"
 		exit 1
 	fi
 	starttime=$(date '+%s')
 	# do backups before editing
 	currentversion=$(backup $projectname)
 	touch "$projectdir/.lock"
+	logevent "'$FUNCNAME $@': success: opening '$draftfile' for edits"
 	#vim -O "$draftfile" "$notesfile" -u $vimrc \
 	# 	-c "wincmd l | setl stl=notes | vertical-resize 100 | setl foldcolumn=0 | wincmd h"
 	vim -u $vimrc "$draftfile" \
@@ -281,18 +288,13 @@ function edit
   	-c "split $outlinefile" \
   	-c "setl stl=%=%t | resize 50 | wincmd h | wincmd h"
 	sessiontime=$(($(date '+%s') - $starttime))
+	logevent "'$FUNCNAME $@': success: '$draftfile' edited for $sessiontime seconds"
 	priorelapsedtime=$(getvalue $projectindex elapsedtime)
 	elapsedtime=$(($priorelapsedtime + $sessiontime))
 	putvalue $projectindex elapsedtime $elapsedtime
 	# set current version in control
 	putvalue $projectindex version $currentversion
-	#if [ $currentversion == 1 ]
-	#then
-	#	printf "version=$currentversion\n" >> "$controlfile"
-	#else
-	#	sed -i "s/^version=.*/version=$currentversion/" "$controlfile"
-	#fi
-	# update word count in draftfile
+	# update word count
 	words=$(wc -w "$draftfile" | cut -d' ' -f1)
 	putvalue $projectindex wordcount $words
 	rm "$projectdir/.lock"
@@ -423,6 +425,7 @@ function backup
 		newversion=1
 		mkdir "$backupdir"
 	fi
+	logevent "'$FUNCNAME $@': success: backed up '$@' version $lastversion"
 	echo $newversion
 }
 
