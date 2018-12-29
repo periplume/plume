@@ -21,19 +21,26 @@ vimrc=support/vimrc
 vimhints=support/vimhints.txt
 
 # name of printer (from lpstat -p)
+# for proof and print functions (coming)
 printer="HL-2270DW"
 
 # maximum number of projects (an arbitrary limit)
 MAXPROJECTS=100
 
 # TODO
-# organize functions logically
-# clean up all functions to include usage, etc in uniform style
 # add git commands for commit, push, and pull
+# add editor as ENV VAR?
 # release v1.0 with tag
 
-function usage
+
+###############################
+# core functions
+###############################
+
+usage ()
 {
+	# print basic usage
+	# no args
 	echo "usage: $scriptname"
 	echo "$scriptname init (run once before use to set up environment)"
 	echo "$scriptname create 'name' (to start a project)"
@@ -46,31 +53,15 @@ function usage
 	# delete (reindex and archive)
 	# proof (to print a proof copy)
 	# publish (to some designated location)
-	# git-status (check against master branch)
 	exit
 }
 
-# other todo
-# - add vim commands to open notes, outline, summary, etc
-# - add logging where prudent
-# - change function defs to be consistent
 
-function timestamp
+init ()
 {
-	# no args, return current timestamp string
-	# 'YYYY-MM-DD HH:MM:SS SECONDS-SINCE-1970'
-	date '+%F %T %s'
-}
-
-function logevent
-{
-	# $@: one arg (multi word) the log message
-	# logs event to global logfile
-	echo "[$(timestamp)] $scriptname $@" >> $logfile
-}
-
-init () {
 	# initialize a new environment
+	# no args
+	# exit 1 if error
 	if [ -e "$filestore" ]
 	then
 		echo "ERROR: $filestore exists"
@@ -78,6 +69,9 @@ init () {
 	else
 		mkdir "$filestore"
 		touch "$indexfile"
+		touch .gitignore
+		echo "*.log" >> .gitignore
+		echo "base/" >> .gitignore
 	fi
 	if [ -e "$logfile" ]
 	then
@@ -89,106 +83,7 @@ init () {
 }
 
 
-function checkindex
-{
-	# check for name and index consistency
-	# no args
-	# return 0 if consistent, 1 if inconsistent
-	indexstate=0
-	if [ ! -e $indexfile ]
-	then
-		# no indexfile at all
-		rebuildindex
-		echo "indexfile rebuilt"
-	fi
-	for i in $filestore/*
-	do
-		name=${i##*/}
-		controlfilename=$(grep ^name= "$i/.control" 2>/dev/null | cut -d= -f2)
-		controlfileindex=$(grep ^index= "$i/.control" 2>/dev/null | cut -d= -f2)
-		indexname=$(grep ^$controlfileindex: $indexfile | cut -d: -f2)
-		if [[ "$name" != "$controlfilename" ]] || [[ "$name" != "$indexname" ]]
-		then
-			indexstate=1
-			logevent "'$FUNCNAME $@': failed: directory '$name' not found in index or controlfile"
-		fi
-	done
-	# now check (cross-reference) indexfile against base/*
-	while read -r line
-	do
-		index=${line%\:*}
-		name=${line##*\:}
-		controlfile=$filestore/$name/.control
-		controlfilename=$(grep ^name= "$controlfile" 2>/dev/null | cut -d= -f2)
-		controlfileindex=$(grep ^index= "$controlfile" 2>/dev/null | cut -d= -f2)
-		if [[ "$name" != "$controlfilename" ]] || [[ "$index" != "$controlfileindex" ]]
-		then
-			indexstate=1
-			logevent "'$FUNCNAME $@': failed: '$name' in index not found in $filestore"
-		fi
-	done < "$indexfile"
-	if [[ $indexstate != 0 ]]
-	then
-		logevent "'$FUNCNAME $@': failure: index file is not consistent"
-		return $indexstate
-	else
-		logevent "'$FUNCNAME $@': success: index file is consistent"
-		return $indexstate
-	fi
-}
-
-function rebuildindex
-{
-	# rebuild corrupt or missing index
-	newindexfile=$filestore/.index.new
-	touch "$filestore/.index.new"
-	indexmax=$(find "$filestore"/* -maxdepth 0 -type d -print | wc -l)
-	i=1
-	while (( $i <= $indexmax )) 
-	do
-		echo "$i:" >> "$newindexfile"
-		(( i+=1 ))
-	done
-	for i in $filestore/*
-	do
-		name=${i##*/}
-		controlfilename=$(grep ^name= "$i/.control" 2>/dev/null | cut -d= -f2)
-		controlfileindex=$(grep ^index= "$i/.control" 2>/dev/null | cut -d= -f2)
-		sed -i "s/^$controlfileindex:.*/$controlfileindex:$name/" "$newindexfile"
-	done
-	mv "$newindexfile" "$indexfile"
-	logevent "'$FUNCNAME $@': success: new index file rebuilt from $filestore"
-
-}
-
-gitpull ()
-{
-	# run git to pull latest down
-	# for a production environment only
-	echo "fetching latest code from remote repository..."
-	git fetch orgin master
-	echo "updating the staging with the latest version"
-	git reset --hard orgin/master
-	echo "$scripname is up to date"
-	logevent "'$FUNCNAME $@': success: latest version of plume installed"
-}
-
-gitcommit ()
-{
-	# commit changes to repo
-	echo "not implemented"
-	git commit plume
-}
-
-gitpush ()
-{
-	# push latest changes to remote repository
-	echo "not implemented"
-	git push -u orgin master
-}
-
-
-function create
+create ()
 {
 	# creates a new project
 	# $@ (one arg, one or more words) is project name
@@ -224,7 +119,69 @@ function create
 	logevent "'$FUNCNAME $@': success: '$project' created"
 }
 
-function rename
+
+edit ()
+{
+	# open draft file of project by index number
+	# $1 index
+	projectindex=$1
+	projectname=$(getprojectname $projectindex)
+	projectdir=$filestore/$projectname
+	draftfile=$projectdir/draft
+	notesfile=$projectdir/notes
+	titlefile=$projectdir/title
+	outlinefile=$projectdir/outline
+	controlfile=$projectdir/.control
+	if [ -e "$projectdir/.lock" ]
+	then
+		echo "ERROR: '$projectname' in use (locked)"
+		logevent "'$FUNCNAME $@': failed: lock file detected in $projectname"
+		exit 1
+	fi
+	# check terminal size and open vim accordingly
+	termsize
+	if [ $? == 0 ]
+	then
+		# screen is large
+		screen=0
+	else
+		# screen is small
+		screen=1
+	fi
+	starttime=$(date '+%s')
+	# do backups before editing
+	currentversion=$(backup $projectname)
+	touch "$projectdir/.lock"
+	logevent "'$FUNCNAME $@': success: opening '$draftfile' for edits"
+	if [ $screen == 0 ]
+	then
+		vim -u $vimrc "$draftfile" \
+  		-c "vertical resize 95 | setl winfixwidth | setl foldcolumn=3" \
+  		-c "vsplit $notesfile" \
+  		-c "vertical resize 60 | setl winfixwidth | setl stl=%=%t..." \
+  		-c "vsplit $titlefile" \
+  		-c "vertical resize 50 | setl stl=%=%t" \
+  		-c "split $outlinefile" \
+  		-c "setl stl=%=%t | resize 50 | wincmd h | wincmd h"
+	else
+		vim -u $vimrc "$draftfile"
+	fi
+	sessiontime=$(($(date '+%s') - $starttime))
+	logevent "'$FUNCNAME $@': success: '$draftfile' edited for $sessiontime seconds"
+	priorelapsedtime=$(getvalue $projectindex elapsedtime)
+	elapsedtime=$(($priorelapsedtime + $sessiontime))
+	putvalue $projectindex elapsedtime $elapsedtime
+	# set current version in control
+	putvalue $projectindex version $currentversion
+	# update word count
+	words=$(wc -w "$draftfile" | cut -d' ' -f1)
+	putvalue $projectindex wordcount $words
+	rm "$projectdir/.lock"
+	exit
+}	
+
+
+rename ()
 {
 	# rename a project
 	# arg 1 = index of project to rename
@@ -257,7 +214,8 @@ function rename
 	exit
 }
 
-function list
+
+list ()
 {
 	# print pretty report on status of projects
 	# note: assumes wc is less than 100000 and elapsed time less than 1000 hours each
@@ -266,17 +224,6 @@ function list
 	then
 		echo "ERROR: database not initialized, run 'plume init' first"
 		exit 1
-	fi
-	if [ ! -s $indexfile ]
-	then
-		if [ -z "$(ls $filestore)" ]
-		then
-			echo "ERROR: no indexfile, no projects, use 'plume create' to begin"
-			exit 1
-		else
-			echo "ERROR: indexfile missing but projects exist, run 'plume fixindex'"
-			exit 1
-		fi
 	fi
 	check=$(checkindex)
 	if [[ $? != 0 ]]
@@ -300,7 +247,114 @@ function list
 	printf "=====================================================================================\n"
 }
 
-function convertseconds
+
+checkindex ()
+{
+	# check for name and index consistency
+	# no args
+	# return 0 if consistent, 1 if inconsistent
+	indexstate=0
+	if [ ! -e $indexfile ]
+	then
+		echo "ERROR: no indexfile found"
+		return 1
+	fi
+	if [ ! -s $indexfile ]
+	then
+		# indexfile exists and is empty
+		if [ -z "$(ls $filestore)" ]
+			# no projects either
+		then
+			return 0
+		else
+			# projects exist, index is empty
+			return 1
+		fi
+	fi
+	for i in $filestore/*
+	do
+		name=${i##*/}
+		controlfilename=$(grep ^name= "$i/.control" 2>/dev/null | cut -d= -f2)
+		controlfileindex=$(grep ^index= "$i/.control" 2>/dev/null | cut -d= -f2)
+		indexname=$(grep ^$controlfileindex: $indexfile | cut -d: -f2)
+		if [[ "$name" != "$controlfilename" ]] || [[ "$name" != "$indexname" ]]
+		then
+			indexstate=1
+			logevent "'$FUNCNAME': failed: directory '$name' not found in index or controlfile"
+		fi
+	done
+	# now check (cross-reference) indexfile against base/*
+	while read -r line
+	do
+		index=${line%\:*}
+		name=${line##*\:}
+		controlfile=$filestore/$name/.control
+		controlfilename=$(grep ^name= "$controlfile" 2>/dev/null | cut -d= -f2)
+		controlfileindex=$(grep ^index= "$controlfile" 2>/dev/null | cut -d= -f2)
+		if [[ "$name" != "$controlfilename" ]] || [[ "$index" != "$controlfileindex" ]]
+		then
+			indexstate=1
+			logevent "'$FUNCNAME $@': failed: '$name' in index not found in $filestore"
+		fi
+	done < "$indexfile"
+	if [[ $indexstate != 0 ]]
+	then
+		logevent "'$FUNCNAME $@': failure: index file is not consistent"
+		return $indexstate
+	else
+		logevent "'$FUNCNAME $@': success: index file is consistent"
+		return $indexstate
+	fi
+}
+
+
+rebuildindex ()
+{
+	# rebuild corrupt or missing index
+	# no args
+	newindexfile=$filestore/.index.new
+	touch "$newindexfile"
+	indexmax=$(find "$filestore"/* -maxdepth 0 -type d -print | wc -l)
+	i=1
+	while (( $i <= $indexmax )) 
+	do
+		echo "$i:" >> "$newindexfile"
+		(( i+=1 ))
+	done
+	for i in $filestore/*
+	do
+		name=${i##*/}
+		controlfilename=$(grep ^name= "$i/.control" 2>/dev/null | cut -d= -f2)
+		controlfileindex=$(grep ^index= "$i/.control" 2>/dev/null | cut -d= -f2)
+		sed -i "s/^$controlfileindex:.*/$controlfileindex:$name/" "$newindexfile"
+	done
+	mv "$newindexfile" "$indexfile"
+	logevent "'$FUNCNAME $@': success: new index file rebuilt from $filestore"
+}
+
+
+############################
+# helper functions
+############################
+
+
+timestamp ()
+{
+	# no args, return current timestamp string
+	# 'YYYY-MM-DD HH:MM:SS SECONDS-SINCE-1970'
+	date '+%F %T %s'
+}
+
+
+logevent ()
+{
+	# $@: one arg (multi word) the log message
+	# logs event to global logfile
+	echo "[$(timestamp)] $scriptname $@" >> $logfile
+}
+
+
+convertseconds ()
 {
 # take seconds as $1, return formatted time as hour:minute
   ((h=${1}/3600))
@@ -309,98 +363,8 @@ function convertseconds
   printf "%01d:%02d\n" $h $m
 }
 
-function testedit
-{
-  width=$(tput cols)
-	height=$(tput lines)
-  if [ $width -lt 120 ]
-  then
-    echo "TERM too narrow, termwidth=$width"
-  else
-    echo "OK, termwidth=$width"
-  fi
-  if [ $width -lt 211 ] || [ $height -lt 59 ]
-  then
-    echo "TERM not fullscreen, termwidth=$width termheight=$height"
-		screen=0
-  else
-    echo "OK, term=$width x $height"
-		screen=1
-	fi
-	if [ $screen -eq 0 ]
-	then
-		echo "term not in full screen...editing draft only"
-		echo "for full multi-window experience terminal must be full screen"
-	for i in 3 2 1
-	do
-		printf "$i\r"
-		sleep 1
-	done
-	else
-		echo "yay for full screen"
-	fi
-}
 
-
-function edit
-{
-	# open draft file of project by index number
-	# $1 index
-	projectindex=$1
-	projectname=$(getprojectname $projectindex)
-	projectdir=$filestore/$projectname
-	draftfile=$projectdir/draft
-	notesfile=$projectdir/notes
-	titlefile=$projectdir/title
-	outlinefile=$projectdir/outline
-	controlfile=$projectdir/.control
-	if [ -e "$projectdir/.lock" ]
-	then
-		echo "ERROR: '$projectname' in use (locked)"
-		logevent "'$FUNCNAME $@': failed: lock file detected in $projectname"
-		exit 1
-	fi
-	# my term in full screen is 211w x 59h
-	termwidth=$(tput cols)
-	termheight=$(tput lines)
-	if [ $termwidth -lt 211 ] || [ $height -lt 59 ]
-	then
-		# term is not fullscreen (without menubar...ie total distraction free
-		# screen)
-		screen=0
-	else
-		screen=1
-	fi
-	starttime=$(date '+%s')
-	# do backups before editing
-	currentversion=$(backup $projectname)
-	touch "$projectdir/.lock"
-	logevent "'$FUNCNAME $@': success: opening '$draftfile' for edits"
-	#vim -O "$draftfile" "$notesfile" -u $vimrc \
-	# 	-c "wincmd l | setl stl=notes | vertical-resize 100 | setl foldcolumn=0 | wincmd h"
-	vim -u $vimrc "$draftfile" \
-  	-c "vertical resize 95 | setl winfixwidth | setl foldcolumn=3" \
-  	-c "vsplit $notesfile" \
-  	-c "vertical resize 60 | setl winfixwidth | setl stl=%=%t..." \
-  	-c "vsplit $titlefile" \
-  	-c "vertical resize 50 | setl stl=%=%t" \
-  	-c "split $outlinefile" \
-  	-c "setl stl=%=%t | resize 50 | wincmd h | wincmd h"
-	sessiontime=$(($(date '+%s') - $starttime))
-	logevent "'$FUNCNAME $@': success: '$draftfile' edited for $sessiontime seconds"
-	priorelapsedtime=$(getvalue $projectindex elapsedtime)
-	elapsedtime=$(($priorelapsedtime + $sessiontime))
-	putvalue $projectindex elapsedtime $elapsedtime
-	# set current version in control
-	putvalue $projectindex version $currentversion
-	# update word count
-	words=$(wc -w "$draftfile" | cut -d' ' -f1)
-	putvalue $projectindex wordcount $words
-	rm "$projectdir/.lock"
-	exit
-}	
-
-function getindex
+getindex ()
 {
 	# get the index from the project name
 	# $@ project name
@@ -417,7 +381,8 @@ function getindex
 	fi
 }
 
-function putvalue
+
+putvalue ()
 {
 	# change (or add) value to controlfile
 	# $1 index of project
@@ -442,7 +407,9 @@ function putvalue
 	fi
 }
 
-getvalue () {
+
+getvalue ()
+{
 	# get value in controlfile
 	# $1 index of project
 	# $2 key
@@ -469,7 +436,7 @@ getvalue () {
 }
 	
 
-function getprojectname
+getprojectname ()
 {
 	# get the project name from index
 	# $1 index
@@ -494,7 +461,40 @@ function getprojectname
 }
 
 
-function backup
+validatename ()
+{
+	# test for legal project name to maintain project naming convention 
+	# allow a-z 0-9 ' '
+	# $@ = project name
+	# return 0 is legal, 1 if illegal
+	if [[ "$@" =~ ^[a-z0-9' ']+$ ]]
+	then
+		return 0
+	else
+		return 1 
+	fi
+}
+
+
+projectexists ()
+{
+	# check whether project exists
+	# $@ project name
+	# test if project exists
+	# return 0 if true
+	# return 1 if false (no project of that name exists)
+	testproject=$@
+	testprojectdir=$filestore/$testproject
+	if [ -e "$testprojectdir" ]
+	then
+		return 0
+	else
+		return 1
+	fi
+}
+
+
+backup ()
 {
 	# backup specified project (before all edits)
 	# $@ project name
@@ -528,43 +528,64 @@ function backup
 	echo $newversion
 }
 
-function validatename
-{
-	# test for legal project name to maintain project naming convention 
-	# allow a-z 0-9 ' '
-	# $@ = project name
-	# return 0 is legal, 1 if illegal
-	if [[ "$@" =~ ^[a-z0-9' ']+$ ]]
-	then
-		return 0
-	else
-		return 1 
-	fi
-}
 
-projectexists ()
+termsize ()
 {
-	# check whether project exists
-	# $@ project name
-	# test if project exists
-	# return 0 if true
-	# return 1 if false (no project of that name exists)
-	testproject=$@
-	testprojectdir=$filestore/$testproject
-	if [ -e "$testprojectdir" ]
+	# check termsize
+	# no args
+	# if term is smaller than 200x40, return 1
+	# if term is at least 200x40, return 0
+  width=$(tput cols)
+	height=$(tput lines)
+	if [ $width -lt 200 ] || [ $height -lt 40 ]
 	then
-		return 0
-	else
+		echo "TERMSIZE $width x $height (wxh) is too small for multi-window screen"
 		return 1
+	else
+		return 0
 	fi
 }
 
-checkgit ()
+
+##############################
+# git build commands
+##############################
+
+
+gitpull ()
 {
-	git remote update
+	# run git to pull latest down
+	# for a production environment only
+	echo "$scriptname: fetching latest code from remote repository..."
+	git fetch orgin master
+	echo "$scriptname: updating local staging with the latest version"
+	git reset --hard orgin/master
+	echo "$scripname is up to date"
+	chmod 555 plume
+	logevent "'$FUNCNAME': success: latest version of $scriptname installed"
 }
 
-# read the command options
+
+gitcommit ()
+{
+	# commit changes to repo
+	echo "not implemented"
+	git commit plume
+}
+
+
+gitpush ()
+{
+	# push latest changes to remote repository
+	echo "not implemented"
+	git push -u orgin master
+}
+
+
+##################################
+# main: read the command options
+##################################
+
 if [ $# -eq 0 ];
 then
 	usage
@@ -684,9 +705,6 @@ else
 				;;
 			gitpull)
 				gitpull
-				;;
-			testedit)
-				testedit
 				;;
 			init)
 				init
