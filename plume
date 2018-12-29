@@ -563,21 +563,20 @@ gitpull ()
 	echo "$scripname is up to date"
 	chmod 555 plume
 	logevent "'$FUNCNAME': success: latest version of $scriptname installed"
+	# this needs better protections...make sure it's not dev!
 }
 
 
 gitcommit ()
 {
 	# commit changes to repo
-	echo "not implemented"
-	git commit plume
+	git commit $scriptname
 }
 
 
 gitpush ()
 {
 	# push latest changes to remote repository
-	echo "not implemented"
 	git push -u orgin master
 }
 
@@ -702,6 +701,12 @@ else
 				;;
 			list)
 				list
+				;;
+			gitcommit)
+				gitcommit
+				;;
+			gitpush)
+				gitpush
 				;;
 			gitpull)
 				gitpull
