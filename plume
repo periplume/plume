@@ -89,6 +89,12 @@ function checkindex
 	# no args
 	# return 0 if consistent, 1 if inconsistent
 	indexstate=0
+	if [ ! -e $indexfile ]
+	then
+		# no indexfile at all
+		rebuildindex
+		echo "indexfile rebuilt"
+	fi
 	for i in $filestore/*
 	do
 		name=${i##*/}
@@ -127,7 +133,7 @@ function checkindex
 
 function rebuildindex
 {
-	# rebuild corrupt index
+	# rebuild corrupt or missing index
 	newindexfile=$filestore/.index.new
 	touch "$filestore/.index.new"
 	indexmax=$(find "$filestore"/* -maxdepth 0 -type d -print | wc -l)
@@ -148,6 +154,22 @@ function rebuildindex
 	logevent "'$FUNCNAME $@': success: new index file rebuilt from $filestore"
 
 }
+
+gitpull ()
+{
+	# run git to pull latest down
+	# for a production environment only
+	echo "not implemented"
+}
+
+gitpush ()
+{
+	# commit changes and push to remote repository
+	echo "not implemented"
+	# git commit plume
+	# git push -u orgin master
+}
+
 
 function create
 {
@@ -223,6 +245,22 @@ function list
 	# print pretty report on status of projects
 	# note: assumes wc is less than 100000 and elapsed time less than 1000 hours each
 	# still many fields to incorporate, eg, outline? # proofs, published? (eg to wordpress)
+	if [ ! -d $filestore ]
+	then
+		echo "ERROR: database not initialized, run 'plume init' first"
+		exit 1
+	fi
+	if [ ! -s $indexfile ]
+	then
+		if [ -z "$(ls $filestore)" ]
+		then
+			echo "ERROR: no indexfile, no projects, use 'plume create' to begin"
+			exit 1
+		else
+			echo "ERROR: indexfile missing but projects exist, run 'plume fixindex'"
+			exit 1
+		fi
+	fi
 	check=$(checkindex)
 	if [[ $? != 0 ]]
 	then
@@ -254,6 +292,39 @@ function convertseconds
   printf "%01d:%02d\n" $h $m
 }
 
+function testedit
+{
+  width=$(tput cols)
+	height=$(tput lines)
+  if [ $width -lt 120 ]
+  then
+    echo "TERM too narrow, termwidth=$width"
+  else
+    echo "OK, termwidth=$width"
+  fi
+  if [ $width -lt 211 ] || [ $height -lt 59 ]
+  then
+    echo "TERM not fullscreen, termwidth=$width termheight=$height"
+		screen=0
+  else
+    echo "OK, term=$width x $height"
+		screen=1
+	fi
+	if [ $screen -eq 0 ]
+	then
+		echo "term not in full screen...editing draft only"
+		echo "for full multi-window experience terminal must be full screen"
+	for i in 3 2 1
+	do
+		printf "$i\r"
+		sleep 1
+	done
+	else
+		echo "yay for full screen"
+	fi
+}
+
+
 function edit
 {
 	# open draft file of project by index number
@@ -271,6 +342,17 @@ function edit
 		echo "ERROR: '$projectname' in use (locked)"
 		logevent "'$FUNCNAME $@': failed: lock file detected in $projectname"
 		exit 1
+	fi
+	# my term in full screen is 211w x 59h
+	termwidth=$(tput cols)
+	termheight=$(tput lines)
+	if [ $termwidth -lt 211 ] || [ $height -lt 59 ]
+	then
+		# term is not fullscreen (without menubar...ie total distraction free
+		# screen)
+		screen=0
+	else
+		screen=1
 	fi
 	starttime=$(date '+%s')
 	# do backups before editing
@@ -460,6 +542,11 @@ projectexists ()
 	fi
 }
 
+checkgit ()
+{
+	git remote update
+}
+
 # read the command options
 if [ $# -eq 0 ];
 then
@@ -577,6 +664,14 @@ else
 				;;
 			list)
 				list
+				;;
+			checkgit)
+				# update git remote refs
+				# report whether there is an update or not
+				checkgit
+				;;
+			testedit)
+				testedit
 				;;
 			init)
 				init
