@@ -165,19 +165,24 @@ gitpull ()
 {
 	# run git to pull latest down
 	# for a production environment only
-	echo "not implemented"
+	echo "fetching latest code from remote repository..."
 	git fetch orgin master
+	echo "updating the staging with the latest version"
+	git reset --hard orgin/master
+	echo "$scripname is up to date"
+	logevent "'$FUNCNAME $@': success: latest version of plume installed"
 }
 
 gitcommit ()
 {
-	# git commit plume
+	# commit changes to repo
 	echo "not implemented"
+	git commit plume
 }
 
 gitpush ()
 {
-	# commit changes and push to remote repository
+	# push latest changes to remote repository
 	echo "not implemented"
 	git push -u orgin master
 }
@@ -677,10 +682,8 @@ else
 			list)
 				list
 				;;
-			checkgit)
-				# update git remote refs
-				# report whether there is an update or not
-				checkgit
+			gitpull)
+				gitpull
 				;;
 			testedit)
 				testedit
