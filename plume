@@ -26,6 +26,12 @@ printer="HL-2270DW"
 # maximum number of projects (an arbitrary limit)
 MAXPROJECTS=100
 
+# TODO
+# organize functions logically
+# clean up all functions to include usage, etc in uniform style
+# add git commands for commit, push, and pull
+# release v1.0 with tag
+
 function usage
 {
 	echo "usage: $scriptname"
@@ -160,14 +166,20 @@ gitpull ()
 	# run git to pull latest down
 	# for a production environment only
 	echo "not implemented"
+	git fetch orgin master
+}
+
+gitcommit ()
+{
+	# git commit plume
+	echo "not implemented"
 }
 
 gitpush ()
 {
 	# commit changes and push to remote repository
 	echo "not implemented"
-	# git commit plume
-	# git push -u orgin master
+	git push -u orgin master
 }
 
 
