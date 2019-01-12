@@ -4,6 +4,9 @@
 " not clear what this is doing but without it vim behaves erratically
 runtime! debian.vim
 
+" turn on visual bell (and turn off audible bell)
+set vb
+
 " turn on color syntax highlighting
 syntax on
 " set the desired color scheme
