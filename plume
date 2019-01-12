@@ -1,8 +1,8 @@
 #!/bin/bash
 # author: jkl
-# writing system
-# uncomment for shell debugging
-#set -x
+# version: v1.0-0-g53e70b8
+# https://github.com/periplume/plume
+# scripted writing management system
 
 # self-identify the script name (it can safely be changed)
 scriptname=${0##*/}
@@ -28,9 +28,12 @@ printer="HL-2270DW"
 MAXPROJECTS=100
 
 # TODO
-# add git commands for commit, push, and pull
 # add editor as ENV VAR?
-# release v1.0 with tag
+# add version function to report version
+# change outline to markdown format (and file) set syntax=markdown
+# add edit <outline> or <notes> for focused non-split-screen mode
+# adjust outline for easy folding
+# add set breakindent for outline mode
 
 
 ###############################
@@ -556,14 +559,17 @@ gitpull ()
 {
 	# run git to pull latest down
 	# for a production environment only
+	if [ -e .dev ]
+	then
+		echo "ERROR: this is the dev environment, don't pull here"
+		exit 1
+	fi
 	echo "$scriptname: fetching latest code from remote repository..."
 	git fetch orgin master
 	echo "$scriptname: updating local staging with the latest version"
 	git reset --hard orgin/master
 	echo "$scripname is up to date"
-	chmod 555 plume
 	logevent "'$FUNCNAME': success: latest version of $scriptname installed"
-	# this needs better protections...make sure it's not dev!
 }
 
 
