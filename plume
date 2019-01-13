@@ -122,6 +122,24 @@ create ()
 	logevent "'$FUNCNAME $@': success: '$project' created"
 }
 
+editsingle ()
+{
+	# edit designated file in single mode (no multiscreen studio)
+	# $1 = index number of project
+	# $2 = file (draft, outline, notes, title)
+	if ! checkforlock $1
+	then
+		echo "ERROR: lock exists in $1" ; exit 1
+	fi
+	projectindex=$1
+	projectname=$(getprojectname $projectindex)
+	projectdir=$filestore/$projectname
+	file=$projectdir/$2
+	vim -u $vimrc "$file"
+	exit
+}
+
+	
 
 edit ()
 {
@@ -341,6 +359,24 @@ rebuildindex ()
 ############################
 
 
+checkforlock ()
+{
+	# check for project lock
+	# $1 = index of project
+	# return 0 if no lock, 1 if lock exists
+	projectindex=$1
+	projectname=$(getprojectname $projectindex)
+	projectdir=$filestore/$projectname
+	lockfile=$projectdir/.lock
+	if [ -e "$lockfile" ]
+	then
+		return 1
+	else
+		return 0
+	fi
+}
+
+
 timestamp ()
 {
 	# no args, return current timestamp string
@@ -475,6 +511,20 @@ validatename ()
 		return 0
 	else
 		return 1 
+	fi
+}
+
+checkforindex ()
+{
+	# check whether project index exists
+	# $1 = index number to check
+	# return 0 if project index exists, 1 if not
+	indexfile=$filestore/.index
+	if grep -q ^$1: $indexfile
+	then
+		return 0
+	else
+		return 1
 	fi
 }
 
@@ -622,6 +672,49 @@ else
 						exit 1
 					fi
 				fi
+				;;
+			editoutline|eo)
+				# check for arguments
+				if [[ $# -lt 2 ]]
+				then
+					echo "ERROR: '$scriptname editoutline' requires arguments"
+					usage
+				fi
+				# check for project
+				if [[ $2 =~ ^[1-9][0-9]*$ ]]
+				then
+					if [[ $2 -le $MAXPROJECTS ]]
+					then
+						if checkforindex $2
+						then
+							inputindex=$2
+						else
+							echo "ERROR: index $2 does not exist" ; exit 1
+						fi
+					else
+						echo "ERROR: $2 is not a legal index number"
+					fi
+				else
+					if validatename ${@:2}
+					then
+						if projectexists ${@:2}
+						then
+							inputindex=$(getindex ${@:2})
+							if [[ -z $inputindex ]]
+							then
+								echo "ERROR: cannot get index for $inputname; index may be corrupt"
+								exit 1
+							fi
+						else
+							echo "ERROR: no project by that name"
+							exit 1
+						fi
+					else
+						echo "ERROR: invalid project name"
+						exit 1
+					fi
+				fi
+				editsingle $inputindex outline
 				;;
 			edit)
 				if [ -z $2 ]
