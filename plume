@@ -34,6 +34,7 @@ MAXPROJECTS=100
 # add edit <outline> or <notes> for focused non-split-screen mode
 # adjust outline for easy folding
 # add set breakindent for outline mode
+# change vim statusline to show project:file eg taodrink:outline
 
 
 ###############################
@@ -262,8 +263,10 @@ list ()
 		version=$(getvalue $index version)
 		elapsed=$(convertseconds $(getvalue $index elapsedtime))
 		wc=$(getvalue $index wordcount)
+		outlines=$(wc -l "$filestore/$name/outline" | cut -d' ' -f1)
 		(( ${#name} > 35 )) && name="${name:0:31}..."
-		printf "%-6s %-34s %-5s %-6s %6s\n" $index "$name" $version $wc $elapsed
+		printf "%-6s %-34s %-5s %-6s %6s %6s\n" $index "$name" $version $wc $elapsed \
+		$outlines
 	done < $indexfile
 	printf "=====================================================================================\n"
 }
