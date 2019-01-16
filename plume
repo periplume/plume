@@ -372,8 +372,8 @@ proof ()
 	file=$projectdir/$2
 	psfile=$file.ps
   proofstring="PROOF: $projectname        %D{%e %b %Y %r}              page $% of $="
-  enscript -b"$proofstring" -s 12 --margins=50::15 -f "Courier10" -p $psfile $file
-  lp -d $printer $psfile
+  enscript -b"$proofstring" -s 12 --margins=50::15 -f "Courier10" -p "$psfile" "$file"
+  lp -d $printer "$psfile"
 }
 
 
