@@ -35,6 +35,9 @@ MAXPROJECTS=100
 # adjust outline for easy folding
 # add set breakindent for outline mode
 # change vim statusline to show project:file eg taodrink:outline
+# add flags to edit for single file, multifile, etc
+# change tracking to include single mode edit sessions
+#  time elapsed thus for all edits, not just draft
 
 
 ###############################
@@ -354,6 +357,22 @@ rebuildindex ()
 	done
 	mv "$newindexfile" "$indexfile"
 	logevent "'$FUNCNAME $@': success: new index file rebuilt from $filestore"
+}
+
+proof ()
+{
+	# print a proof to the designated printer
+	# $1 = index of project
+	# $2 = outline or draft
+	# prints text file
+	projectindex=$1
+	projectname=$(getprojectname $projectindex)
+	projectdir=$filestore/$projectname
+	file=$projectdir/$2
+	psfile=$file.ps
+  proofstring="PROOF: $projectname        %D{%e %b %Y %r}              page $% of $="
+  enscript -b"$proofstring" -s 12 --margins=50::15 -f "Courier10" -p $psfile $file
+  #lp -d $printer $psfile
 }
 
 
@@ -803,6 +822,28 @@ else
 				;;
 			list)
 				list
+				;;
+			proof)
+				if [ -z $2 ]
+				then
+					usage
+				fi
+				if [[ $2 =~ ^[1-9][0-9]*$ ]]
+				then
+					index=$2
+					case "$3" in
+						outline|o)
+							proof $index outline
+							;;
+						draft|d)
+							echo "proof $index draft"
+							;;
+						*)
+							echo "proof [index] [outline|o or draft|d]"
+							exit
+					esac
+				fi
+				exit
 				;;
 			gitcommit)
 				gitcommit
