@@ -365,6 +365,7 @@ proof ()
 	# $1 = index of project
 	# $2 = outline or draft
 	# prints text file
+	# TODO: add counter for proof tracking in control file?
 	projectindex=$1
 	projectname=$(getprojectname $projectindex)
 	projectdir=$filestore/$projectname
@@ -372,7 +373,7 @@ proof ()
 	psfile=$file.ps
   proofstring="PROOF: $projectname        %D{%e %b %Y %r}              page $% of $="
   enscript -b"$proofstring" -s 12 --margins=50::15 -f "Courier10" -p $psfile $file
-  #lp -d $printer $psfile
+  lp -d $printer $psfile
 }
 
 
